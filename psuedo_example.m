@@ -17,7 +17,8 @@ x2 = x2 + 0.1*randn(1,length(y2));
 x = [x1, x2];
 y = [y1, y2];
 
-subplot(121);
+% subplot(121);
+figure
 plot(x, y, 'o', 'MarkerSize', 1);
 grid on;
 
@@ -26,18 +27,18 @@ r=1;
 x_obs_1 = 5.5;
 y_obs_1 = 6;
 for i = 120:360
-    x3(i) = r*cosd(i);
-    y3(i) = r*sind(i);
+    x3(i-119) = r*cosd(i);
+    y3(i-119) = r*sind(i);
 end
 x3 = x3 + ones(1,length(x3))*x_obs_1 + 0.05*randn(1,length(x3));
 y3 = y3 + ones(1,length(y3))*y_obs_1 + 0.05*randn(1,length(y3));
 
-x_obs_2 = 7;
+x_obs_2 = 8; % 6.64082
 y_obs_2 = 11;
 
 for i = 120:360
-    x4(i) = r*cosd(i);
-    y4(i) = r*sind(i);
+    x4(i-119) = r*cosd(i);
+    y4(i-119) = r*sind(i);
 end
 x4 = x4 + ones(1,length(x4))*x_obs_2 + 0.05*randn(1,length(x4));
 y4 = y4 + ones(1,length(y4))*y_obs_2 + 0.05*randn(1,length(y4));
@@ -50,9 +51,9 @@ r_obs=0.2;
 x_total=[];
 y_total=[];
 for i = 1:length(x)
-    for j = 1:360
-        xr(j) = x(i) + r_obs*cosd(j);
-        yr(j) = y(i) + r_obs*sind(j);
+    for j = 120:360
+        xr(j-119) = x(i) + r_obs*cosd(j);
+        yr(j-119) = y(i) + r_obs*sind(j);
     end
     x_total = [x_total, xr];
     y_total = [y_total, yr];
@@ -63,9 +64,9 @@ end
 x_totalr=[];
 y_totalr=[];
 for i = 1:length(x3)
-    for j = 1:360
-        xr(j) = x3(i) + r_obs*cosd(j);
-        yr(j) = y3(i) + r_obs*sind(j);
+    for j = 120:360
+        xr(j-119) = x3(i) + r_obs*cosd(j);
+        yr(j-119) = y3(i) + r_obs*sind(j);
     end
     x_totalr = [x_totalr, xr];
     y_totalr = [y_totalr, yr];
@@ -93,7 +94,7 @@ path_len = 50;
 global_path_x = linspace(robot_pose(1), goal_pose(1), path_len);
 global_path_y = linspace(robot_pose(2), goal_pose(2), path_len);
 global_path = [global_path_x; global_path_y];
-% hold on; plot(global_path_x, global_path_y);
+hold on; plot(global_path_x, global_path_y, 'Color', 'red');
 
 %% collision region of robot
 r_robot=0.6;
@@ -101,13 +102,12 @@ for i = 1:360
     robotxr(i) = robot_pose(1) + r_robot*cosd(i);
     robotyr(i) = robot_pose(2) + r_robot*sind(i);
 end
-hold on;
-plot(robotxr, robotyr);
+hold on; plot(robotxr, robotyr);
 
 %% kmeans clustering
 X = [x3, x4; y3, y4]';
 k=2;
-[idx,C] = kmeans(X,k);
+[idx,C] = kmeans(X,k); % dbscan으로 대체 예정 
 hold on;
 plot(C(:,1), C(:,2), 'o', 'MarkerSize', 3, 'Color', 'red');
 
@@ -139,9 +139,10 @@ for i = 1:path_len-1
             vec = revised_path(i+1,:) - C(j,:);
             projection_vec = vec/norm(vec)*r_cost(j);
             revised_path(i+1,:) = C(j,:) + projection_vec;
+            hold on; plot([C(j,1), revised_path(i+1,1)], [C(j,2), revised_path(i+1,2)]);
         end
     end
-    if rem(i,4) == 0
+    if rem(i,50) == 0
         th = atan2(revised_path(i+1,2) - revised_path(i,2), revised_path(i+1,1) - revised_path(i,1));
         robot_path = triangle(revised_path(i,1), revised_path(i,2), th);
         hold on;
@@ -150,58 +151,60 @@ for i = 1:path_len-1
         hold on; plot(robot_path(1,1), robot_path(2,1), '*');
     end
 end
-hold on; plot(revised_path(:,1), revised_path(:,2), 'o-');
+hold on; plot(revised_path(:,1), revised_path(:,2), 'o');
 xlim([0 15]); ylim([0 15]);
 xlabel("x"); ylabel("y"); title("path planning")
+legend
+legend('','','','','','','','','','local path');
 
 %% mycostmap
-y1_map = [1:0.01:12];
-x1_map = ones(1,length(y1_map));
-x1_map = x1_map + 0.05*randn(1,length(y1_map));
-
-y2_map = [1:0.01:9];
-x2_map = ones(1,length(y2_map))*11;
-x2_map = x2_map + 0.05*randn(1,length(y2_map));
-
-x_map = [x1_map, x2_map];
-y_map = [y1_map, y2_map];
-
-map = occupancyMap(15,15,15);
-xy_map = [x_map; y_map]';
-pvalue = ones(length(x_map), 1)*0.2;
-updateOccupancy(map, xy_map, pvalue);
-
-subplot(122);
-show(map);
-
-%% scanmatching
-currentScanCart = [x1, x2, x3, x4; y1, y2, y3, y4]';
-th = pi/10; trans_x = 0.5; trans_y = 0.3;
-T = [cos(th), -sin(th), trans_x;
-    sin(th), cos(th), trans_y;
-    0, 0, 1];
-smalltf_curScan = T*[currentScanCart'; ones(1, length(currentScanCart))];
-currentScanCart2 = smalltf_curScan(1:2,:)';
-referenceScanCart = [x_map; y_map]';
-
-currentScan = lidarScan(currentScanCart2);
-referenceScan = lidarScan(referenceScanCart);
-transform = matchScans(currentScan,referenceScan);
-transScan = transformScan(currentScan,transform);
-figure(1)
-plot(currentScanCart2(:,1),currentScanCart2(:,2),'g.');
-hold on
-plot(referenceScanCart(:,1),referenceScanCart(:,2),'k.');
-hold on
-transScanCart = transScan.Cartesian;
-plot(transScanCart(:,1),transScanCart(:,2),'r.');
-legend('Reference laser scan','Transformed current laser scan','Location','NorthWest');
-xlim([0 15]); ylim([0 15]);
-grid on;
+% y1_map = [1:0.01:12];
+% x1_map = ones(1,length(y1_map));
+% x1_map = x1_map + 0.05*randn(1,length(y1_map));
+% 
+% y2_map = [1:0.01:9];
+% x2_map = ones(1,length(y2_map))*11;
+% x2_map = x2_map + 0.05*randn(1,length(y2_map));
+% 
+% x_map = [x1_map, x2_map];
+% y_map = [y1_map, y2_map];
+% 
+% map = occupancyMap(15,15,15);
+% xy_map = [x_map; y_map]';
+% pvalue = ones(length(x_map), 1)*0.2;
+% updateOccupancy(map, xy_map, pvalue);
+% 
+% subplot(122);
+% show(map);
+% 
+% %% scanmatching
+% currentScanCart = [x1, x2, x3, x4; y1, y2, y3, y4]';
+% th = pi/10; trans_x = 0.5; trans_y = 0.3;
+% T = [cos(th), -sin(th), trans_x;
+%     sin(th), cos(th), trans_y;
+%     0, 0, 1];
+% smalltf_curScan = T*[currentScanCart'; ones(1, length(currentScanCart))];
+% currentScanCart2 = smalltf_curScan(1:2,:)';
+% referenceScanCart = [x_map; y_map]';
+% 
+% currentScan = lidarScan(currentScanCart2);
+% referenceScan = lidarScan(referenceScanCart);
+% transform = matchScans(currentScan,referenceScan);
+% transScan = transformScan(currentScan,transform);
+% figure(2)
+% plot(currentScanCart2(:,1),currentScanCart2(:,2),'g.');
+% hold on
+% plot(referenceScanCart(:,1),referenceScanCart(:,2),'k.');
+% hold on
+% transScanCart = transScan.Cartesian;
+% plot(transScanCart(:,1),transScanCart(:,2),'r.');
+% legend('Reference laser scan','Transformed current laser scan','Location','NorthWest');
+% xlim([0 15]); ylim([0 15]);
+% grid on;
 
 %% dbscan
-figure(2)
-data = [x1, x2, x3, x4; y1, y2, y3, y4]';
-idx = dbscan(data,1,5); % The default distance metric is Euclidean distance
-gscatter(data(:,1),data(:,2),idx);
-title('DBSCAN Using Euclidean Distance Metric')
+% figure(3)
+% data = [x1, x2, x3, x4; y1, y2, y3, y4]';
+% idx = dbscan(data,1,5); % The default distance metric is Euclidean distance
+% gscatter(data(:,1),data(:,2),idx);
+% title('DBSCAN Using Euclidean Distance Metric')
