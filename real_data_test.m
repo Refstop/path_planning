@@ -7,11 +7,11 @@ imageNorm = double(image)/255;
 imageOccupancy = 1 - imageNorm;
 map = occupancyMap(imageOccupancy,20);
 
-setOccupancy(map, -map_origin(1:2), 1);
-for i = 1:5
-    setOccupancy(map, -[map_origin(1)-0.05*i, map_origin(2)], 1);
-    setOccupancy(map, -[map_origin(1), map_origin(2)-0.05*i], 1);
-end
+% setOccupancy(map, -map_origin(1:2), 1);
+% for i = 1:5
+%     setOccupancy(map, -[map_origin(1)-0.05*i, map_origin(2)], 1);
+%     setOccupancy(map, -[map_origin(1), map_origin(2)-0.05*i], 1);
+% end
 
 % fig1 = figure(1);
 % show(map);
@@ -38,48 +38,14 @@ robot_origin = robot_origin_coord(1:2,1);
 % robot_origin = drawPose(map, -map_origin, robot_pose, false);
 
 laserscan = T_mr*[laserscan';ones(1,length(laserscan))];
-laserscan = laserscan(1:2,:)';
+laserscan = laserscan(1:2,:)'; % map 기준 좌표
 
-% fig3 = figure(3);
-% show(map);
-% set(fig3, 'OuterPosition', [250, 250, 1500, 1200])
+fig3 = figure(3);
+plot(laserscan(:,1), laserscan(:,2), '.')
+set(fig3, 'OuterPosition', [250, 250, 2000, 600])
+grid on;
 
-%% extract gridmap's value
-sensing_range = 9;
-sampling_resolution = 0.01;
-ranges = [0:sampling_resolution:sensing_range];
-
-for i = 1:angle_n
-    angle = angle_min + (i-1)*angle_increment;
-    x(i,:) = ranges*cos(angle);
-    y(i,:) = ranges*sin(angle);
-end
-x = x + robot_origin(1);
-y = y + robot_origin(2);
-
-window_size = size(x);
-cell_val_threshold = 0.9;
-occupied_cell = [];
-for i = 1:window_size(1)
-    for j = 1:window_size(2)
-        cur_cell_val = getOccupancy(map, [x(i,j), y(i,j)]);
-        if cur_cell_val > cell_val_threshold
-            occupied_cell(:,end+1) = [x(i,j); y(i,j); 1];
-        end
-    end
-end
-
-T_om = tf2d(-map_origin);
-temp = inv(T_om)*occupied_cell;
-map_cell_pnt = temp(1:2,:)';
-
-% fig4 = figure(4);
-% plot(laserscan(:,1), laserscan(:,2),'.');
-% hold on; plot(map_cell_pnt(:,1), map_cell_pnt(:,2),'.');
-% grid on;
-% set(fig4, 'OuterPosition', [250, 250, 2000, 700])
-
-%% dbscan
+%% 1. laserscan만 클러스터링
 cluster_threshold = 20;
 epsilon = 0.3;
 minpts = 5;
@@ -110,53 +76,148 @@ for i = 1:k_ls
     end
 end
 
-idx_map = dbscan(map_cell_pnt,epsilon,minpts);
-k_val_map = unique(idx_map);
-k_map = length(k_val_map);
-for i = 1:k_map
-    cluster_map_num(i) = sum(idx_map==k_val_map(i));
+for i = 1:k_ls
+    range = [];
+    for j = 1:length(idx_ls)
+        if idx_ls(j) == k_val_ls(i)
+            range(end+1) = norm(C_ls(i,:) - laserscan(j,:));
+        end
+    end
+    r_max(i) = max(range);
 end
-k_val_map = k_val_map(cluster_map_num > cluster_threshold);
-k_map = length(k_val_map);
-map_t_1 = []; map_t_2 = [];
-map_1 = map_cell_pnt(:,1);
-map_2 = map_cell_pnt(:,2);
-idx_map_t = [];
-for i = 1:k_map
-    map_t_1 = [map_t_1; map_1(idx_map==k_val_map(i))];
-    map_t_2 = [map_t_2; map_2(idx_map==k_val_map(i))];
-    idx_map_t = [idx_map_t; idx_map(idx_map==k_val_map(i))];
-end
-map_cell_pnt = [map_t_1, map_t_2];
-idx_map = idx_map_t;
 
-C_map = [];
-for i = 1:k_map
-    if k_val_map(i) >= 0
-        C_map(end+1,:) = [mean(map_cell_pnt(idx_map==k_val_map(i),1)), mean(map_cell_pnt(idx_map==k_val_map(i),2))];
+%% visualize area
+for i = 1:k_ls
+    for j = 1:360
+        areax(j) = C_ls(i,1) + r_max(i)*cosd(j);
+        areay(j) = C_ls(i,2) + r_max(i)*sind(j);
+    end
+%     hold on; plot(areax, areay);
+end
+
+%% 2. gridmap과 일정 부분 이상 겹칠 경우 제거
+sampling_resolution = 0.03;
+cell_val_threshold = 0.9;
+
+culled_laserscan = laserscan;
+culled_idx_ls = idx_ls;
+culled_k_val_ls = k_val_ls;
+culled_C_ls = C_ls;
+culling_index = [];
+
+for i = 1:k_ls
+    ranges = [0:sampling_resolution:r_max(i)];
+    x = []; y = [];
+    for j = 1:angle_n
+        angle = angle_min + (j-1)*angle_increment;
+        x(j,:) = ranges*cos(angle);
+        y(j,:) = ranges*sin(angle);
+    end
+
+    C_ls_ogm = T_om*[C_ls(i,1); C_ls(i,2); 1];
+    x = x + C_ls_ogm(1);
+    y = y + C_ls_ogm(2);
+
+    window_size = size(x);
+    
+    occupied_cell = [];
+    for j = 1:window_size(1)
+        for k = 1:window_size(2)
+            cur_cell_val = getOccupancy(map, [x(j,k), y(j,k)]);
+            if cur_cell_val > cell_val_threshold
+                occupied_cell(:,end+1) = [x(j,k); y(j,k); 1];
+            end
+        end
+    end
+    if length(occupied_cell) > 20
+        culled_laserscan(culled_idx_ls == k_val_ls(i),:) = [];
+        culled_idx_ls(culled_idx_ls == k_val_ls(i)) = [];
+        culling_index(end+1) = i;
+    end
+    % 잘 안되면 empty가 아니면 코사인 유사도 검사도 해볼것
+end
+culled_k_val_ls(culling_index) = [];
+culled_k_ls = length(culled_k_val_ls);
+culled_C_ls(culling_index,:) = [];
+r_max(culling_index) = [];
+hold on; plot(culled_laserscan(:,1), culled_laserscan(:,2), '.');
+
+%% current robot & goal
+r_obs = 0.2;
+goal_pose = [6, 1, 0.0412];
+
+robot = triangle(robot_pose(1), robot_pose(2), robot_pose(3));
+robot_pgon = polyshape(robot(1,:), robot(2,:));
+hold on; plot(robot_pgon);
+hold on; plot(robot(1,1), robot(2,1), '*');
+
+goal = triangle(goal_pose(1), goal_pose(2), goal_pose(3));
+goal_pgon = polyshape(goal(1,:), goal(2,:));
+hold on; plot(goal_pgon);
+hold on; plot(goal(1,1), goal(2,1), '*');
+
+%% global path(point to point)
+path_len = 50;
+global_path_x = linspace(robot_pose(1), goal_pose(1), path_len);
+global_path_y = linspace(robot_pose(2), goal_pose(2), path_len);
+global_path = [global_path_x; global_path_y];
+hold on; plot(global_path_x, global_path_y, 'Color', 'red');
+
+%% collision region of robot
+r_robot = 0.4;
+for i = 1:360
+    robotxr(i) = robot_pose(1) + r_robot*cosd(i);
+    robotyr(i) = robot_pose(2) + r_robot*sind(i);
+end
+hold on; plot(robotxr, robotyr);
+
+%% path - resampling
+revised_path = global_path';
+
+r_cost = r_max + ones(1,culled_k_ls)*(r_robot + r_obs);
+for i = 1:culled_k_ls
+    for j = 1:360
+        areax(j) = culled_C_ls(i,1) + r_cost(i)*cosd(j);
+        areay(j) = culled_C_ls(i,2) + r_cost(i)*sind(j);
+    end
+%     hold on; plot(areax, areay);
+end
+
+for i = 1:culled_k_ls
+    revise_idx = [];
+    revise_target_vec = [];
+    for j = 1:path_len-1
+        if norm(revised_path(j+1,:) - culled_C_ls(i,:)) < r_cost(i)
+            if isempty(revise_target_vec)
+                revise_idx(1) = j+1;
+                revise_target_vec(1,:) = revised_path(j+1,:) - culled_C_ls(i,:);
+            else
+                revise_idx(2) = j+1;
+                revise_target_vec(2,:) = revised_path(j+1,:) - culled_C_ls(i,:);
+            end
+        end
+    end
+    if ~isempty(revise_target_vec)
+        angle = acos(dot(revise_target_vec(1,:), revise_target_vec(2,:))/(norm(revise_target_vec(1,:))*norm(revise_target_vec(2,:))));
+        angle_increment = angle/(revise_idx(2) - revise_idx(1) + 1);
+    
+        angle_init = atan2(revise_target_vec(1,2), revise_target_vec(1,1));
+        db = goal_pose(2) - robot_pose(2);
+        ca = goal_pose(1) - robot_pose(1);
+        center_pos = db*culled_C_ls(i,1) - ca*culled_C_ls(i,2) + ca*robot_pose(2) - db*robot_pose(1);
+        for k = revise_idx(1):revise_idx(2)
+            if center_pos < 0
+                th = angle_init + (k-revise_idx(1))*angle_increment;
+                revised_path(k,:) = culled_C_ls(i,:) + [r_cost(i)*cos(th), r_cost(i)*sin(th)];
+            elseif center_pos >= 0
+                th = angle_init - (k-revise_idx(1))*angle_increment;
+                revised_path(k,:) = culled_C_ls(i,:) + [r_cost(i)*cos(th), r_cost(i)*sin(th)];
+            end
+        end
     end
 end
 
-fig5 = figure(5);
-% gscatter(map_cell_pnt(:,1),map_cell_pnt(:,2),idx_map);
-hold on; gscatter(laserscan(:,1),laserscan(:,2),idx_ls);
-hold on; plot(C_ls(:,1), C_ls(:,2), 'o');
-hold on; plot(C_map(:,1), C_map(:,2), 'o');
-grid on;
-set(fig5, 'OuterPosition', [250, 250, 2000, 700])
-
-%% property of cluster by pca(eigenvalue)
-% for i = 1:k_ls
-%     ls_temp = [laserscan(idx_ls==k_val_ls(i),1), laserscan(idx_ls==k_val_ls(i),2)]
-%     C = cov([ls_temp(:,1) - C_ls(i,1), ls_temp(:,2) - C_ls(i,2)]);
-%     [E,D] = eig(C);
-%     D;
-%     hold on; drawArrow(C_ls(i,1)+[0, D(1,1)/2*E(1,1)], C_ls(i,2)+[0, D(1,1)/2*E(2,1)], "red");
-%     hold on; drawArrow(C_ls(i,1)+[0, D(2,2)/2*E(1,2)], C_ls(i,2)+[0, D(2,2)/2*E(2,2)], "blue");
-% end
-i = 3;
-ls_temp = [laserscan(idx_ls==k_val_ls(i),1), laserscan(idx_ls==k_val_ls(i),2)];
-C = cov([ls_temp(:,1) - C_ls(i,1), ls_temp(:,2) - C_ls(i,2)]);
-[E,D] = eig(C);
-hold on; drawArrow(C_ls(i,1)+[0, D(1,1)/2*E(1,1)], C_ls(i,2)+[0, D(1,1)/2*E(2,1)], "red");
-hold on; drawArrow(C_ls(i,1)+[0, D(2,2)/2*E(1,2)], C_ls(i,2)+[0, D(2,2)/2*E(2,2)], "blue");
+hold on; plot(revised_path(:,1), revised_path(:,2), 'o-');
+xlim([0 17]); ylim([-1 3]);
+xlabel("x"); ylabel("y"); title("path planning")
+% set(fig1, 'OuterPosition', [250, 250, 700, 700])

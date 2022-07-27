@@ -1,5 +1,5 @@
 function tri = triangle(x, y, th)
-r=0.5;
+r=0.3;
 x_tri(1) = r*cos(0);
 y_tri(1) = r*sin(0);
 x_tri(2) = r*cos(2*pi/3);
