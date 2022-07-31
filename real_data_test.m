@@ -1,4 +1,6 @@
 clc;clear all;close all;
+% 현재 문제점: waypoint 근처에 장애물이 있을 때?
+% 장애물들 사이의 거리가 너무 가깝다면 빙 돌아가는 코스 만들기
 
 %% costmap
 map_origin = [-48, -8, 0];
@@ -180,7 +182,7 @@ for i = 1:culled_k_ls
         areax(j) = culled_C_ls(i,1) + r_cost(i)*cosd(j);
         areay(j) = culled_C_ls(i,2) + r_cost(i)*sind(j);
     end
-%     hold on; plot(areax, areay);
+    hold on; plot(areax, areay);
 end
 
 for i = 1:culled_k_ls
@@ -217,7 +219,7 @@ for i = 1:culled_k_ls
     end
 end
 
-hold on; plot(revised_path(:,1), revised_path(:,2), 'o-');
-xlim([0 17]); ylim([-1 3]);
+hold on; plot(revised_path(:,1), revised_path(:,2), 'o-', 'LineWidth', 3);
+xlim([0 10]); ylim([-1 3]);
 xlabel("x"); ylabel("y"); title("path planning")
 % set(fig1, 'OuterPosition', [250, 250, 700, 700])
