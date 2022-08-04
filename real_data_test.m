@@ -1,6 +1,7 @@
 clc;clear all;close all;
 % 현재 문제점: waypoint 근처에 장애물이 있을 때?
 % 장애물들 사이의 거리가 너무 가깝다면 빙 돌아가는 코스 만들기
+% 운행 도중 목적지가 바뀌면(경로가 바뀌면) 바로 수정하도록 하기
 
 %% costmap
 map_origin = [-48, -8, 0];
@@ -44,7 +45,7 @@ laserscan = laserscan(1:2,:)'; % map 기준 좌표
 
 fig3 = figure(3);
 plot(laserscan(:,1), laserscan(:,2), '.')
-set(fig3, 'OuterPosition', [250, 250, 2000, 600])
+set(fig3, 'OuterPosition', [250, 250, 1000, 450])
 grid on;
 
 %% 1. laserscan만 클러스터링
@@ -166,7 +167,7 @@ global_path = [global_path_x; global_path_y];
 hold on; plot(global_path_x, global_path_y, 'Color', 'red');
 
 %% collision region of robot
-r_robot = 0.4;
+r_robot = 0.3;
 for i = 1:360
     robotxr(i) = robot_pose(1) + r_robot*cosd(i);
     robotyr(i) = robot_pose(2) + r_robot*sind(i);
@@ -215,11 +216,29 @@ for i = 1:culled_k_ls
                 th = angle_init - (k-revise_idx(1))*angle_increment;
                 revised_path(k,:) = culled_C_ls(i,:) + [r_cost(i)*cos(th), r_cost(i)*sin(th)];
             end
+            center_pos_last = center_pos;
+            for l = 1:culled_k_ls
+                if norm(revised_path(k,:) - culled_C_ls(l,:)) < r_cost(l)-0.1
+                    center_pos = -center_pos;
+                    break
+                end
+            end
+            if center_pos_last ~= center_pos
+                angle = 2*pi - angle;
+                angle_increment = angle/(revise_idx(2) - revise_idx(1) + 1);
+                if center_pos < 0
+                    th = angle_init + (k-revise_idx(1))*angle_increment;
+                    revised_path(k,:) = culled_C_ls(i,:) + [r_cost(i)*cos(th), r_cost(i)*sin(th)];
+                elseif center_pos >= 0
+                    th = angle_init - (k-revise_idx(1))*angle_increment;
+                    revised_path(k,:) = culled_C_ls(i,:) + [r_cost(i)*cos(th), r_cost(i)*sin(th)];
+                end
+            end
         end
     end
 end
 
-hold on; plot(revised_path(:,1), revised_path(:,2), 'o-', 'LineWidth', 3);
+hold on; plot(revised_path(:,1), revised_path(:,2), 'o-');
 xlim([0 10]); ylim([-1 3]);
 xlabel("x"); ylabel("y"); title("path planning")
 % set(fig1, 'OuterPosition', [250, 250, 700, 700])
