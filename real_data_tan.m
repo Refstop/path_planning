@@ -58,6 +58,8 @@ end
 laserscan = [ls_t_1, ls_t_2];
 idx_ls = idx_ls_t;
 
+% laserscan(idx_ls==4,:) = laserscan(idx_ls==4,:) + [-0.5, -0.4];
+
 C_ls = [];
 for i = 1:k_ls
     if k_val_ls(i) >= 0
@@ -129,6 +131,7 @@ culled_k_val_ls(culling_index) = [];
 culled_k_ls = length(culled_k_val_ls);
 culled_C_ls(culling_index,:) = [];
 r_max(culling_index) = [];
+% hold on; plot(culled_laserscan(:,1), culled_laserscan(:,2), '.');
 hold on; plot(culled_laserscan(:,1), culled_laserscan(:,2), '.');
 
 %% current robot & goal
@@ -146,11 +149,11 @@ hold on; plot(goal_pgon);
 hold on; plot(goal(1,1), goal(2,1), '*');
 
 %% global path(point to point)
-path_len = 50;
+path_len = 10; % adaptive
 global_path_x = linspace(robot_pose(1), goal_pose(1), path_len);
 global_path_y = linspace(robot_pose(2), goal_pose(2), path_len);
 global_path = [global_path_x; global_path_y];
-hold on; plot(global_path_x, global_path_y, 'Color', 'red');
+hold on; plot(global_path_x, global_path_y, 'o-', 'Color', 'red');
 
 %% collision region of robot
 r_robot = 0.3;
@@ -172,44 +175,23 @@ end
 
 %% planning(each iters(seconds))
 close_C_ls = culled_C_ls; % 가까운 순으로 정렬 - 생략
-cur_robot_pose = global_path(:,1)';
+% cur_robot_pose = global_path(:,1)';
 revised_path(1,:) = global_path(:,1)';
 path_reverse = false;
 sampling_resolution = 0.03;
 
 for i = 1:culled_k_ls
-    if i == 1
+    r_plan = r_cost(i) + 0.2;
+    if i == 1 % 첫 번째 경로 생성 시는 그냥 운행
         % robot-obs
-        vec = close_C_ls(i,:) - cur_robot_pose;
-        a = norm(vec);
-        b = sqrt(a^2 - r_cost(i)^2);
-        th = acos(b/a);
-        alpha = atan2(vec(2), vec(1));
-        phi = [alpha + th, alpha - th];
-        tangential_vector = [b*cos(phi(1)), b*sin(phi(1)); b*cos(phi(2)), b*sin(phi(2))];
-        tangential_point = [cur_robot_pose(1:2) + tangential_vector(1,:); cur_robot_pose(1:2) + tangential_vector(2,:)];
-        cur_path_vec = goal_pose(1:2) - cur_robot_pose;
-        phi = [acos(dot(cur_path_vec, tangential_vector(1,:))/(norm(cur_path_vec)*norm(tangential_vector(1,:)))), ...
-        acos(dot(cur_path_vec, tangential_vector(2,:))/(norm(cur_path_vec)*norm(tangential_vector(2,:))))];
+        [tangential_point, argmin] = tangential_lines(close_C_ls(i,:), cur_robot_pose, goal_pose, r_cost(i));
 
-        [argval, argmin] = min(phi);
         revised_path(end+1,:) = tangential_point(argmin,:);
 
         % obs-goal
-        vec = close_C_ls(i,:) - goal_pose(1:2);
-        a = norm(vec);
-        b = sqrt(a^2 - r_cost(i)^2);
-        th = acos(b/a);
-        alpha = atan2(vec(2), vec(1));
-        phi = [alpha + th, alpha - th];
-        tangential_vector = [b*cos(phi(1)), b*sin(phi(1)); b*cos(phi(2)), b*sin(phi(2))];
-        tangential_point = [goal_pose(1:2) + tangential_vector(1,:); goal_pose(1:2) + tangential_vector(2,:)];
-        cur_path_vec = cur_robot_pose - goal_pose(1:2);
-        phi = [acos(dot(cur_path_vec, tangential_vector(1,:))/(norm(cur_path_vec)*norm(tangential_vector(1,:)))), ...
-        acos(dot(cur_path_vec, tangential_vector(2,:))/(norm(cur_path_vec)*norm(tangential_vector(2,:))))];
+        [tangential_point, argmin] = tangential_lines(close_C_ls(i,:), goal_pose(1:2), cur_robot_pose, r_cost(i));
 
-        [argval, argmin] = min(phi);
-        
+        % resample of boundary
         vec1 = revised_path(end,:) - culled_C_ls(i,:);
         vec2 = tangential_point(argmin,:) - culled_C_ls(i,:);
         
@@ -222,45 +204,23 @@ for i = 1:culled_k_ls
             revised_path(end+1,:) = culled_C_ls(i,:) + [r_cost(i)*cos(theta), r_cost(i)*sin(theta)];
         end
         
-    else
+    else % 두번 째 경로 생성부터는 
         db = goal_pose(2) - cur_robot_pose(2);
         ca = goal_pose(1) - cur_robot_pose(1);
         dist = abs(db*culled_C_ls(i,1) - ca*culled_C_ls(i,2) + ca*robot_pose(2) - db*robot_pose(1))/sqrt(db^2+ca^2);
         if dist < r_cost(i)
-            vec = close_C_ls(i,:) - cur_robot_pose;
-            a = norm(vec);
-            b = sqrt(a^2 - r_cost(i)^2);
-            th = acos(b/a);
-            alpha = atan2(vec(2), vec(1));
-            phi = [alpha + th, alpha - th];
-            tangential_vector = [b*cos(phi(1)), b*sin(phi(1)); b*cos(phi(2)), b*sin(phi(2))];
-            tangential_point = [cur_robot_pose(1:2) + tangential_vector(1,:); cur_robot_pose(1:2) + tangential_vector(2,:)];
-            cur_path_vec = goal_pose(1:2) - cur_robot_pose;
-            phi = [acos(dot(cur_path_vec, tangential_vector(1,:))/(norm(cur_path_vec)*norm(tangential_vector(1,:)))), ...
-            acos(dot(cur_path_vec, tangential_vector(2,:))/(norm(cur_path_vec)*norm(tangential_vector(2,:))))];
+            [tangential_point, argmin] = tangential_lines(close_C_ls(i,:), cur_robot_pose, goal_pose, r_cost(i));
 
-            [argval, argmin] = min(phi);
             revised_path(end+1,:) = tangential_point(argmin,:);
             for j = 1:culled_k_ls
                 if norm(revised_path(end,:) - culled_C_ls(j,:)) < r_cost(j)
-                    revised_path(end,:) = tangential_point(rem(argmin,2)+1,:); %C++에선 나머지연산으로 스위칭
+                    revised_path(end,:) = tangential_point(rem(argmin,2)+1,:); % C++에선 나머지연산으로 스위칭
                     path_reverse = true;
                 end
             end
+            [tangential_point, argmin] = tangential_lines(close_C_ls(i,:), goal_pose(1:2), cur_robot_pose, r_cost(i));
 
-            vec = close_C_ls(i,:) - goal_pose(1:2);
-            a = norm(vec);
-            b = sqrt(a^2 - r_cost(i)^2);
-            th = acos(b/a);
-            alpha = atan2(vec(2), vec(1));
-            phi = [alpha + th, alpha - th];
-            tangential_vector = [b*cos(phi(1)), b*sin(phi(1)); b*cos(phi(2)), b*sin(phi(2))];
-            tangential_point = [goal_pose(1:2) + tangential_vector(1,:); goal_pose(1:2) + tangential_vector(2,:)];
-            cur_path_vec = cur_robot_pose - goal_pose(1:2);
-            phi = [acos(dot(cur_path_vec, tangential_vector(1,:))/(norm(cur_path_vec)*norm(tangential_vector(1,:)))), ...
-            acos(dot(cur_path_vec, tangential_vector(2,:))/(norm(cur_path_vec)*norm(tangential_vector(2,:))))];
-
-            [argval, argmin] = min(phi);
+            % resample of boundary
             num = 10;
             vec1 = revised_path(end,:) - culled_C_ls(i,:);
             if path_reverse
@@ -282,5 +242,6 @@ for i = 1:culled_k_ls
 end
 revised_path(end+1,:) = goal_pose(1:2);
 hold on; plot(revised_path(:,1), revised_path(:,2), 'o-');
+% hold on; gscatter(culled_laserscan(:,1), culled_laserscan(:,2), culled_idx_ls);
 xlim([0 10]); ylim([-1 3]);
 xlabel("x"); ylabel("y"); title("path planning")
