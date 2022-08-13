@@ -273,7 +273,6 @@ temp_path = [];
 temp_path_last = [];
 grad_thres = 0.45; % param
 spline_resol = 30; % param
-argval = 1e10;
 for i = 2:length(revised_path)-1
     front_grad = atan2(revised_path(i,2) - revised_path(i-1,2), revised_path(i,1) - revised_path(i-1,1));
     back_grad = atan2(revised_path(i+1,2) - revised_path(i,2), revised_path(i+1,1) - revised_path(i,1));
@@ -282,11 +281,12 @@ for i = 2:length(revised_path)-1
             t = (j-1)/spline_resol;
             temp_path(end+1,:) = [t^2, t, 1]*[1,-2,1; -2,2,0; 1,0,0]*[revised_path(i-1,:);revised_path(i,:);revised_path(i+1,:)];
         end
+        argval = 1e10;
         if ~isempty(temp_path_last)
             for j = 1:spline_resol
                 for k = 1:spline_resol
                     p_dist = norm(temp_path_last(j) - temp_path(k));
-                    if p_dist < argval && j~=k
+                    if p_dist < argval
                         argval = p_dist;
                         argmin_cur = j;
                         argmin_last = k;
@@ -301,9 +301,7 @@ for i = 2:length(revised_path)-1
         end
     else
         if ~isempty(temp_path_last)
-            smooth_revised_path = [smooth_revised_path; temp_path_last];
-            temp_path_last = [];
-            argval = 1e10;
+            smooth_revised_path = []
         end
         smooth_revised_path(end+1,:) = revised_path(i,:);
     end
