@@ -165,7 +165,7 @@ for i = 1:culled_k_ls
         areax(j) = culled_C_ls(i,1) + r_cost(i)*cosd(j);
         areay(j) = culled_C_ls(i,2) + r_cost(i)*sind(j);
     end
-%     hold on; plot(areax, areay);
+    hold on; plot(areax, areay);
 end
 
 %% planning(each iters(seconds))
@@ -180,7 +180,7 @@ allow_start_avoid = true;
 for i = 1:culled_k_ls
     r_avoid = r_cost(i) + 0.2; % param
     for j = 1:360
-%         hold on; plot(culled_C_ls(i,1)+r_avoid*cosd(j), culled_C_ls(i,2)+r_avoid*sind(j), '.');
+        hold on; plot(culled_C_ls(i,1)+r_avoid*cosd(j), culled_C_ls(i,2)+r_avoid*sind(j), '.');
     end
     [dist, ang] = line_point_dist(revised_path(1,:), goal_pose(1:2), culled_C_ls(i,:));
     
@@ -241,7 +241,7 @@ for i = 1:culled_k_ls
 
         % 4. robot side의 접점과 goal side의 접점 간 곡선 경로를 리샘플링을 통해 생성
         path_angle = acos(dot(vec1, vec2)/(norm(vec1)*norm(vec2)));
-        num = 5; % param
+        num = 8; % param
         angle_inc = path_angle/num;
         angle_init = atan2(vec1(2), vec1(1));
         for j = 1:num
@@ -267,51 +267,12 @@ for i = 1:culled_k_ls
     end
 end
 revised_path(end+1,:) = goal_pose(1:2);
+
 %% spline 추가(bezier spline)
-smooth_revised_path = [];
-temp_path = [];
-temp_path_last = [];
-grad_thres = 0.45; % param
-spline_resol = 30; % param
-argval = 1e10;
-for i = 2:length(revised_path)-1
-    front_grad = atan2(revised_path(i,2) - revised_path(i-1,2), revised_path(i,1) - revised_path(i-1,1));
-    back_grad = atan2(revised_path(i+1,2) - revised_path(i,2), revised_path(i+1,1) - revised_path(i,1));
-    if abs(back_grad - front_grad) > grad_thres
-        for j = 1:spline_resol
-            t = (j-1)/spline_resol;
-            temp_path(end+1,:) = [t^2, t, 1]*[1,-2,1; -2,2,0; 1,0,0]*[revised_path(i-1,:);revised_path(i,:);revised_path(i+1,:)];
-        end
-        if ~isempty(temp_path_last)
-            for j = 1:spline_resol
-                for k = 1:spline_resol
-                    p_dist = norm(temp_path_last(j) - temp_path(k));
-                    if p_dist < argval && j~=k
-                        argval = p_dist;
-                        argmin_cur = j;
-                        argmin_last = k;
-                    end
-                end
-            end
-            temp_path_last(argmin_last:end,:) = [];
-            temp_path(1:argmin_cur,:) = [];
-            temp_path_last = [temp_path_last; temp_path];
-        else
-            temp_path_last = temp_path;
-        end
-    else
-        if ~isempty(temp_path_last)
-            smooth_revised_path = [smooth_revised_path; temp_path_last];
-            temp_path_last = [];
-            argval = 1e10;
-        end
-        smooth_revised_path(end+1,:) = revised_path(i,:);
-    end
-end
-smooth_revised_path(end+1,:) = revised_path(end,:);
+smooth_revised_path = smooth_path(revised_path);
 
-
-hold on; plot(smooth_revised_path(:,1), smooth_revised_path(:,2), 'o-');
-% hold on; plot(revised_path(:,1), revised_path(:,2), 'o-');
-xlim([0 10]); ylim([-1 3]);
+hold on; plot(smooth_revised_path(:,1), smooth_revised_path(:,2), "LineWidth", 2);
+hold on; plot(revised_path(:,1), revised_path(:,2), 'o-');
+% xlim([0 10]); ylim([-1 3]);
+xlim([-0.1 7.1]); ylim([-0.6 2.5]);
 xlabel("x"); ylabel("y"); title("path planning")
