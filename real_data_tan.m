@@ -176,12 +176,14 @@ path_reverse = false;
 sampling_resolution = 0.03;
 new_obs = false;
 allow_start_avoid = true;
+G = digraph();
 
 for i = 1:culled_k_ls
     r_avoid = r_cost(i) + 0.2; % param
     for j = 1:360
         hold on; plot(culled_C_ls(i,1)+r_avoid*cosd(j), culled_C_ls(i,2)+r_avoid*sind(j), '.');
     end
+    % global 직선 경로와 인식된 장애물 중심 간의 거리와 원 중심으로부터 직선 경로에 내리는 수직 벡터의 각도
     [dist, ang] = line_point_dist(revised_path(1,:), goal_pose(1:2), culled_C_ls(i,:));
     
     if dist < r_cost(i)
@@ -195,7 +197,7 @@ for i = 1:culled_k_ls
         vec_avoid = [r_avoid*cos(th_avoid(1)), r_avoid*sin(th_avoid(1)); ...
                     r_avoid*cos(th_avoid(2)), r_avoid*sin(th_avoid(2))];
         point_start_avoid = culled_C_ls(i,:) + vec_avoid(1,:);
-        point_end_avoid = culled_C_ls(i,:) + vec_avoid(2,:);
+        point_end_avoid = culled_C_ls(i,:) + vec_avoid(2,:); % 도착지점도 장애물 반경 안에 드가는지 체크
         hold on; plot(point_start_avoid(1), point_start_avoid(2),'o','MarkerSize',12);
         hold on; plot(point_end_avoid(1), point_end_avoid(2),'o','MarkerSize',12);
         
@@ -213,9 +215,10 @@ for i = 1:culled_k_ls
         end
         cur_robot_pose = revised_path(end,:);
 
-        % 2. 1번의 시작 지점을 스타트로 inflation radius에 접하는 경로 생성
+        % 2. 1번의 시작 지점을 스타트로 inflation radius에 접하는 경로 생성 - 여기서부터 분기점 시작 
         sample_num = 100;
-        [tangential_point, argmin] = tangential_lines(close_C_ls(i,:), cur_robot_pose, point_end_avoid, r_cost(i));
+        % 현재 로봇의 위치에서 다음 장애물에 대한 접점 2개와 각 접점에 대한 각도를 추출
+        [tangential_point, phi] = tangential_lines(close_C_ls(i,:), cur_robot_pose, point_end_avoid, r_cost(i));
         line_sampling = [linspace(cur_robot_pose(1), tangential_point(argmin,1), sample_num)', linspace(cur_robot_pose(2), tangential_point(argmin,2), sample_num)'];
         for j = 1:culled_k_ls
             if j ~= i
@@ -230,9 +233,10 @@ for i = 1:culled_k_ls
         end
         revised_path(end+1,:) = tangential_point(argmin,:);
 
-        % 3. goal side의 global path로 가는 접점(=착지점) 결정(아님)
-        [tangential_point, argmin] = tangential_lines(close_C_ls(i,:), point_end_avoid, cur_robot_pose, r_cost(i));
+        % 3. goal side의 global path로 가는 접점
+        [tangential_point, phi] = tangential_lines(close_C_ls(i,:), point_end_avoid, cur_robot_pose, r_cost(i));
         vec1 = revised_path(end,:) - culled_C_ls(i,:);
+        
         if path_reverse
             vec2 = tangential_point(rem(argmin,2)+1,:) - culled_C_ls(i,:);
         else
