@@ -176,7 +176,9 @@ path_reverse = false;
 sampling_resolution = 0.03;
 new_obs = false;
 allow_start_avoid = true;
-G = digraph();
+G = digraph;
+path_node_num = 1;
+init = false;
 
 for i = 1:culled_k_ls
     r_avoid = r_cost(i) + 0.2; % param
@@ -210,15 +212,27 @@ for i = 1:culled_k_ls
             end
         end
         if allow_start_avoid
-            revised_path(end+1,:) = point_start_avoid;
+            % revised_path(end+1,:) = point_start_avoid;
+            if ~init
+                G = addedge(G,path_node_num,path_node_num+1);
+                init = true;
+            end
+            G.Nodes.path(path_node_num) = {point_start_avoid};
+            path_node_num = path_node_num + 1;
             allow_start_avoid = true;
         end
-        cur_robot_pose = revised_path(end,:);
+        cur_robot_pose = point_start_avoid;
 
         % 2. 1번의 시작 지점을 스타트로 inflation radius에 접하는 경로 생성 - 여기서부터 분기점 시작 
         sample_num = 100;
         % 현재 로봇의 위치에서 다음 장애물에 대한 접점 2개와 각 접점에 대한 각도를 추출
         [tangential_point, phi] = tangential_lines(close_C_ls(i,:), cur_robot_pose, point_end_avoid, r_cost(i));
+        hold on; plot([point_start_avoid(1), tangential_point(1,1)], [point_start_avoid(2), tangential_point(1,2)]);
+        hold on; plot([point_start_avoid(1), tangential_point(2,1)], [point_start_avoid(2), tangential_point(2,2)]);
+%         hold on; plot([revised_path(1,1), tangential_point(1,1)], [revised_path(1,2), tangential_point(1,2)]);
+%         hold on; plot([revised_path(1,1), tangential_point(2,1)], [revised_path(1,2), tangential_point(2,2)]);
+        xlim([-0.1 7.1]); ylim([-0.6 2.5]);
+        return;
         line_sampling = [linspace(cur_robot_pose(1), tangential_point(argmin,1), sample_num)', linspace(cur_robot_pose(2), tangential_point(argmin,2), sample_num)'];
         for j = 1:culled_k_ls
             if j ~= i
