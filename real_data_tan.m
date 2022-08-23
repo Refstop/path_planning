@@ -8,7 +8,7 @@ imageOccupancy = 1 - imageNorm;
 map = occupancyMap(imageOccupancy,20);
 
 %% robot, lidar data load
-laserscan = load("data2.txt");
+laserscan = load("data0.txt");
 robot_pose = load("pose.txt");
 angle_min = -2.05370092392;
 angle_max = 2.05370092392;
@@ -178,6 +178,9 @@ new_obs = false;
 allow_start_avoid = true;
 G = digraph;
 path_node_num = 1;
+G = addedge(G, path_node_num, path_node_num+1);
+G.Nodes.path(path_node_num) = {global_path(:,1)'};
+path_node_num = path_node_num + 1;
 init = false;
 
 for i = 1:culled_k_ls
@@ -213,10 +216,11 @@ for i = 1:culled_k_ls
         end
         if allow_start_avoid
             % revised_path(end+1,:) = point_start_avoid;
-            if ~init
-                G = addedge(G,path_node_num,path_node_num+1);
-                init = true;
-            end
+            % if ~init
+            %     G = addedge(G,path_node_num,path_node_num+1);
+            %     init = true;
+            % end
+            G = addedge(G,path_node_num,path_node_num+1);
             G.Nodes.path(path_node_num) = {point_start_avoid};
             path_node_num = path_node_num + 1;
             allow_start_avoid = true;
@@ -229,16 +233,18 @@ for i = 1:culled_k_ls
         [tangential_point, phi] = tangential_lines(close_C_ls(i,:), cur_robot_pose, point_end_avoid, r_cost(i));
         hold on; plot([point_start_avoid(1), tangential_point(1,1)], [point_start_avoid(2), tangential_point(1,2)]);
         hold on; plot([point_start_avoid(1), tangential_point(2,1)], [point_start_avoid(2), tangential_point(2,2)]);
-%         hold on; plot([revised_path(1,1), tangential_point(1,1)], [revised_path(1,2), tangential_point(1,2)]);
-%         hold on; plot([revised_path(1,1), tangential_point(2,1)], [revised_path(1,2), tangential_point(2,2)]);
         xlim([-0.1 7.1]); ylim([-0.6 2.5]);
         return;
+        % 두쪽 다에 대해서 검사
+        for j = 1:2
+
         line_sampling = [linspace(cur_robot_pose(1), tangential_point(argmin,1), sample_num)', linspace(cur_robot_pose(2), tangential_point(argmin,2), sample_num)'];
         for j = 1:culled_k_ls
             if j ~= i
                 for k = 1:sample_num
                     if norm(close_C_ls(j,:) - line_sampling(k,:)) < r_cost(j)
                         argmin = rem(argmin,2)+1;
+                        % 겹치는 게 있을 경우 그래프에 포함하지 않음
                         path_reverse = true;
                         break;
                     end

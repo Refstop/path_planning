@@ -1,3 +1,4 @@
+% 장애물 원 중심, 시작점, 끝점, 회피 반지름
 function [tangential_point, phi] = tangential_lines(close_C, pose, goal_pose, r_cost)
 vec = close_C - pose;
 a = norm(vec);
