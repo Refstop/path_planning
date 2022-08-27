@@ -8,7 +8,7 @@ imageOccupancy = 1 - imageNorm;
 map = occupancyMap(imageOccupancy,20);
 
 %% robot, lidar data load
-laserscan = load("data0.txt");
+laserscan = load("data1.txt");
 robot_pose = load("pose.txt");
 angle_min = -2.05370092392;
 angle_max = 2.05370092392;
@@ -26,9 +26,9 @@ robot_origin = robot_origin_coord(1:2,1);
 laserscan = T_mr*[laserscan';ones(1,length(laserscan))];
 laserscan = laserscan(1:2,:)'; % map 기준 좌표
 
-fig3 = figure(3);
+fig1 = figure(1);
 plot(laserscan(:,1), laserscan(:,2), '.')
-set(fig3, 'OuterPosition', [250, 250, 1000, 450])
+set(fig1, 'OuterPosition', [250, 250, 1000, 450])
 grid on;
 
 %% 1. laserscan만 클러스터링
@@ -172,24 +172,26 @@ end
 close_C_ls = culled_C_ls; % 가까운 순으로 정렬 - 생략
 cur_robot_pose = global_path(:,1)';
 revised_path(1,:) = global_path(:,1)';
-path_reverse = false;
 sampling_resolution = 0.03;
-new_obs = false;
-allow_start_avoid = true;
+
+% graph initialization
 G = digraph;
-path_node_num = 1;
-G = addedge(G, path_node_num, path_node_num+1);
-G.Nodes.path(path_node_num) = {global_path(:,1)'};
-path_node_num = path_node_num + 1;
-init = false;
+path_node_idx = 1;
+G = addnode(G,1);
+G.Nodes.path(path_node_idx) = {global_path(:,1)'};
+path_node_idx = path_node_idx + 1;
+
+xlim([-0.1 7.1]); ylim([-0.6 2.5]);
+path_graph = get_path_graph(path_node_idx, 1, false, G, goal_pose, culled_k_ls, close_C_ls, r_cost, fig1);
+figure; plot(path_graph); return;
 
 for i = 1:culled_k_ls
     r_avoid = r_cost(i) + 0.2; % param
     for j = 1:360
-        hold on; plot(culled_C_ls(i,1)+r_avoid*cosd(j), culled_C_ls(i,2)+r_avoid*sind(j), '.');
+        hold on; plot(close_C_ls(i,1)+r_avoid*cosd(j), close_C_ls(i,2)+r_avoid*sind(j), '.');
     end
     % global 직선 경로와 인식된 장애물 중심 간의 거리와 원 중심으로부터 직선 경로에 내리는 수직 벡터의 각도
-    [dist, ang] = line_point_dist(revised_path(1,:), goal_pose(1:2), culled_C_ls(i,:));
+    [dist, ang] = line_point_dist(cell2mat(G.Nodes.path(1)), goal_pose(1:2), close_C_ls(i,:));
     
     if dist < r_cost(i)
         % 1. 직선 경로 상의 장애물 회피 시작 지점 결정
@@ -201,93 +203,85 @@ for i = 1:culled_k_ls
         
         vec_avoid = [r_avoid*cos(th_avoid(1)), r_avoid*sin(th_avoid(1)); ...
                     r_avoid*cos(th_avoid(2)), r_avoid*sin(th_avoid(2))];
-        point_start_avoid = culled_C_ls(i,:) + vec_avoid(1,:);
-        point_end_avoid = culled_C_ls(i,:) + vec_avoid(2,:); % 도착지점도 장애물 반경 안에 드가는지 체크
+        point_start_avoid = close_C_ls(i,:) + vec_avoid(1,:);
+        point_end_avoid = close_C_ls(i,:) + vec_avoid(2,:); % 도착지점도 장애물 반경 안에 드가는지 체크
         hold on; plot(point_start_avoid(1), point_start_avoid(2),'o','MarkerSize',12);
         hold on; plot(point_end_avoid(1), point_end_avoid(2),'o','MarkerSize',12);
         
-        for j = 1:culled_k_ls
-            if j ~= i
-                if norm(close_C_ls(j,:) - point_start_avoid) < r_cost(j)
-                    allow_start_avoid = false;
-                    break;
-                end
-            end
-        end
-        if allow_start_avoid
+        if free_from_obs(culled_k_ls, i, close_C_ls, point_start_avoid, r_cost(i))
             % revised_path(end+1,:) = point_start_avoid;
-            % if ~init
-            %     G = addedge(G,path_node_num,path_node_num+1);
-            %     init = true;
-            % end
-            G = addedge(G,path_node_num,path_node_num+1);
-            G.Nodes.path(path_node_num) = {point_start_avoid};
-            path_node_num = path_node_num + 1;
-            allow_start_avoid = true;
+            G = addnode(G,1);
+            G.Nodes.path(path_node_idx) = {point_start_avoid};
+            G = addedge(G,path_node_idx-1,path_node_idx);
+
+            path_node_idx = path_node_idx + 1;
         end
         cur_robot_pose = point_start_avoid;
-
+        
         % 2. 1번의 시작 지점을 스타트로 inflation radius에 접하는 경로 생성 - 여기서부터 분기점 시작 
         sample_num = 100;
         % 현재 로봇의 위치에서 다음 장애물에 대한 접점 2개와 각 접점에 대한 각도를 추출
         [tangential_point, phi] = tangential_lines(close_C_ls(i,:), cur_robot_pose, point_end_avoid, r_cost(i));
-        hold on; plot([point_start_avoid(1), tangential_point(1,1)], [point_start_avoid(2), tangential_point(1,2)]);
-        hold on; plot([point_start_avoid(1), tangential_point(2,1)], [point_start_avoid(2), tangential_point(2,2)]);
-        xlim([-0.1 7.1]); ylim([-0.6 2.5]);
-        return;
+        
+        parent_node_idx = path_node_idx;
+        branch = [];
         % 두쪽 다에 대해서 검사
         for j = 1:2
-
-        line_sampling = [linspace(cur_robot_pose(1), tangential_point(argmin,1), sample_num)', linspace(cur_robot_pose(2), tangential_point(argmin,2), sample_num)'];
-        for j = 1:culled_k_ls
-            if j ~= i
-                for k = 1:sample_num
-                    if norm(close_C_ls(j,:) - line_sampling(k,:)) < r_cost(j)
-                        argmin = rem(argmin,2)+1;
-                        % 겹치는 게 있을 경우 그래프에 포함하지 않음
-                        path_reverse = true;
-                        break;
-                    end
-                end
-            end
-        end
-        revised_path(end+1,:) = tangential_point(argmin,:);
-
-        % 3. goal side의 global path로 가는 접점
-        [tangential_point, phi] = tangential_lines(close_C_ls(i,:), point_end_avoid, cur_robot_pose, r_cost(i));
-        vec1 = revised_path(end,:) - culled_C_ls(i,:);
-        
-        if path_reverse
-            vec2 = tangential_point(rem(argmin,2)+1,:) - culled_C_ls(i,:);
-        else
-            vec2 = tangential_point(argmin,:) - culled_C_ls(i,:);
-        end
-
-        % 4. robot side의 접점과 goal side의 접점 간 곡선 경로를 리샘플링을 통해 생성
-        path_angle = acos(dot(vec1, vec2)/(norm(vec1)*norm(vec2)));
-        num = 8; % param
-        angle_inc = path_angle/num;
-        angle_init = atan2(vec1(2), vec1(1));
-        for j = 1:num
-            th_rspl = angle_init - j*angle_inc;
-            point_rspl = culled_C_ls(i,:) + [r_cost(i)*cos(th_rspl), r_cost(i)*sin(th_rspl)];
-            for k = 1:culled_k_ls
-                if (norm(point_rspl - culled_C_ls(k,:)) <= r_avoid) && (k~=i)
-                    new_obs = true;
+            line_sampling = [linspace(cur_robot_pose(1), tangential_point(j,1), sample_num)', linspace(cur_robot_pose(2), tangential_point(j,2), sample_num)'];
+            
+            f_check = true;
+            for k = 1:sample_num
+                check = free_from_obs(culled_k_ls, i, close_C_ls, line_sampling(k,:), r_cost(i));
+                if ~check
+                    f_check = check;
                     break;
                 end
             end
-            if new_obs
-                break;
+            if f_check
+                G = addnode(G,1);
+                G.Nodes.path(path_node_idx) = {tangential_point(j,:)};
+                G = addedge(G, parent_node_idx-1, path_node_idx);
+                branch(end+1) = path_node_idx;
+                path_node_idx = path_node_idx+1;
+                hold on; plot(tangential_point(j,1), tangential_point(j,2), 'o');
             end
-            revised_path(end+1,:) = point_rspl;
         end
-        if ~new_obs
-            revised_path(end+1,:) = point_end_avoid;
+        
+        for j = 1:2
+            cur_robot_pose = cell2mat(G.Nodes.path(branch(j)));
+            [tangential_point, phi] = tangential_lines(close_C_ls(i,:), point_end_avoid, cur_robot_pose, r_cost(i));
+            % 경로별 매치 필요
+            vec1 = cur_robot_pose - close_C_ls(i,:);
+            vec2 = tangential_point(j,:) - close_C_ls(i,:);
+                
+            path_angle = acos(dot(vec1, vec2)/(norm(vec1)*norm(vec2)));
+            num = 8; % param
+            angle_inc = path_angle/num;
+            angle_init = atan2(vec1(2), vec1(1));
+            
+            parent_node_idx = branch(j);
+            for l = 1:num
+                if j==1 % 하드코딩, 나중에 고칠것 
+                    th_rspl = angle_init - l*angle_inc;
+                else
+                    th_rspl = angle_init + l*angle_inc;
+                end
+
+                point_rspl = close_C_ls(i,:) + [r_cost(i)*cos(th_rspl), r_cost(i)*sin(th_rspl)];
+                hold on; plot(point_rspl(1), point_rspl(2), 'o');
+                if ~free_from_obs(culled_k_ls, i, close_C_ls, point_rspl, r_avoid) % new obs
+                    break;
+                end
+                G = addnode(G,1);
+                G.Nodes.path(path_node_idx) = {point_rspl};
+                G = addedge(G, parent_node_idx, path_node_idx);
+                parent_node_idx = path_node_idx;
+                path_node_idx = path_node_idx+1;
+                % revised_path(end+1,:) = point_rspl;
+            end
         end
-        new_obs = false;
-        % 5. 생성된 경로대로 로봇을 운행했음을 의미
-        cur_robot_pose = revised_path(end,:);
+        figure; plot(G); return; 
+        cur_robot_pose
     end
 end
 revised_path(end+1,:) = goal_pose(1:2);
