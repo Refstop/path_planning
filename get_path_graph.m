@@ -71,6 +71,10 @@ if dist < r_cost(i)
         end
         cur_robot_pose = cell2mat(G.Nodes.path(branch(j)));
         [tangential_point, phi] = tangential_lines(close_C_ls(i,:), point_end_avoid, cur_robot_pose, r_cost(i));
+        hold on; plot(tangential_point(j,1), tangential_point(j,2), 'o');
+        if j == 2
+            return;
+        end
         % 경로별 매치 필요
         vec1 = cur_robot_pose - close_C_ls(i,:);
         vec2 = tangential_point(j,:) - close_C_ls(i,:);
