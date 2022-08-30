@@ -26,14 +26,18 @@ if dist < r_cost(i)
     hold on; plot(point_start_avoid(1), point_start_avoid(2),'o','MarkerSize',12);
     hold on; plot(point_end_avoid(1), point_end_avoid(2),'o','MarkerSize',12);
     
-    if free_from_obs(culled_k_ls, i, close_C_ls, point_start_avoid, r_cost(i)) && ~new_obs
-        % revised_path(end+1,:) = point_start_avoid;
-        G = addnode(G,1);
-        G.Nodes.path(path_node_idx) = {point_start_avoid};
-        G = addedge(G,path_node_idx-1,path_node_idx);
-        path_node_idx = path_node_idx + 1;
-        cur_robot_pose = point_start_avoid;
+    if new_obs
+        cur_robot_pose = cell2mat(G.Nodes.path(path_node_idx));
+    else
+        if free_from_obs(culled_k_ls, i, close_C_ls, point_start_avoid, r_cost(i))
+            G = addnode(G,1);
+            G.Nodes.path(path_node_idx) = {point_start_avoid};
+            G = addedge(G,path_node_idx-1,path_node_idx);
+            path_node_idx = path_node_idx + 1;
+            cur_robot_pose = point_start_avoid;
+        end
     end
+    
     
 
     % 2. 1번의 시작 지점을 스타트로 inflation radius에 접하는 경로 생성 - 여기서부터 분기점 시작
@@ -72,9 +76,7 @@ if dist < r_cost(i)
         cur_robot_pose = cell2mat(G.Nodes.path(branch(j)));
         [tangential_point, phi] = tangential_lines(close_C_ls(i,:), point_end_avoid, cur_robot_pose, r_cost(i));
         hold on; plot(tangential_point(j,1), tangential_point(j,2), 'o');
-        if j == 2
-            return;
-        end
+
         % 경로별 매치 필요
         vec1 = cur_robot_pose - close_C_ls(i,:);
         vec2 = tangential_point(j,:) - close_C_ls(i,:);
@@ -86,7 +88,7 @@ if dist < r_cost(i)
 
         parent_node_idx = branch(j);
         for l = 1:num
-            if j==1
+            if j==1 % hard code
                 th_rspl = angle_init - l*angle_inc;
             else
                 th_rspl = angle_init + l*angle_inc;
@@ -104,7 +106,14 @@ if dist < r_cost(i)
             parent_node_idx = path_node_idx;
             path_node_idx = path_node_idx+1;
         end
+        if ~new_obs
+            G = addnode(G,1);
+            G.Nodes.path(path_node_idx) = {point_end_avoid};
+            G = addedge(G, path_node_idx-1, path_node_idx);
+            path_node_idx = path_node_idx+1;
+        end
     end
+    % 말단 노드에 대해서 graph 생성
     path_graph = get_path_graph(5, i+1, new_obs, G, goal_pose, culled_k_ls, close_C_ls, r_cost, fig);
     return;
 end
